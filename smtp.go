@@ -145,7 +145,7 @@ func (d *Dialer) DialAndCampaignSend(fm string, to []string, m *Message) ([]Reci
 	}
 	defer s.Close()
 
-	recipientResponse := make([]RecipientResponse, 0, len(to))
+	recipientResponse := make([]RecipientResponse, len(to))
 	for index, addr := range to {
 		m.SetHeader("To", addr)
 		err = s.Send(fm, []string{addr}, m)

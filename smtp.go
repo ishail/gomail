@@ -137,6 +137,23 @@ func (d *Dialer) DialAndSend(m ...*Message) error {
 	return Send(s, m...)
 }
 
+//recipients will be in 'to' list without knowledge about any other recipient.
+func (d *Dialer) DialAndCampaignSend(fm string, to []string, m *Message) ([]RecipientResponse, error) {
+	s, err := d.Dial()
+	if err != nil {
+		return nil, err
+	}
+	defer s.Close()
+
+	recipientResponse := make([]RecipientResponse, 0, len(to))
+	for index, addr := range to {
+		m.SetHeader("To", addr)
+		err = s.Send(fm, []string{addr}, m)
+		recipientResponse[index] = RecipientResponse{addr, err}
+	}
+	return recipientResponse, nil
+}
+
 type smtpSender struct {
 	smtpClient
 	d *Dialer
@@ -199,4 +216,9 @@ type smtpClient interface {
 	Data() (io.WriteCloser, error)
 	Quit() error
 	Close() error
+}
+
+type RecipientResponse struct {
+	address string
+	err     error
 }

@@ -160,8 +160,6 @@ func (w *messageWriter) writeStrings(a []string, sep string) {
 		if len(a) == 1 {
 			return
 		}
-	}else{
-		return
 	}
 	for _, s := range a[1:] {
 		w.writeString(sep)

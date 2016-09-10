@@ -3,9 +3,9 @@ package gomail
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/ishail/smtp/smtp"
 	"io"
 	"net"
-	"net/smtp"
 	"strings"
 	"time"
 )
@@ -127,10 +127,10 @@ func addr(host string, port int) string {
 
 // DialAndSend opens a connection to the SMTP server, sends the given emails and
 // closes the connection.
-func (d *Dialer) DialAndSend(m ...*Message) error {
+func (d *Dialer) DialAndSend(m ...*Message) (string, error) {
 	s, err := d.Dial()
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer s.Close()
 
@@ -148,8 +148,8 @@ func (d *Dialer) DialAndCampaignSend(fm string, to []string, m *Message) ([]Reci
 	recipientResponse := make([]RecipientResponse, len(to))
 	for index, addr := range to {
 		m.SetHeader("To", addr)
-		err = s.Send(fm, []string{addr}, m)
-		recipientResponse[index] = RecipientResponse{addr, err}
+		resp, err := s.Send(fm, []string{addr}, m)
+		recipientResponse[index] = RecipientResponse{addr, resp, err}
 	}
 	return recipientResponse, nil
 }
@@ -159,7 +159,7 @@ type smtpSender struct {
 	d *Dialer
 }
 
-func (c *smtpSender) Send(from string, to []string, msg io.WriterTo) error {
+func (c *smtpSender) Send(from string, to []string, msg io.WriterTo) (string, error) {
 	if err := c.Mail(from); err != nil {
 		if err == io.EOF {
 			// This is probably due to a timeout, so reconnect and try again.
@@ -171,26 +171,26 @@ func (c *smtpSender) Send(from string, to []string, msg io.WriterTo) error {
 				}
 			}
 		}
-		return err
+		return "", err
 	}
 
 	for _, addr := range to {
 		if err := c.Rcpt(addr); err != nil {
-			return err
+			return "", err
 		}
 	}
 
-	w, err := c.Data()
+	w, code, resp, err := c.Data()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if _, err = msg.WriteTo(w); err != nil {
 		w.Close()
-		return err
+		return "", err
 	}
 
-	return w.Close()
+	return fmt.Sprintf("%d %s", code, resp), w.Close()
 }
 
 func (c *smtpSender) Close() error {
@@ -213,12 +213,13 @@ type smtpClient interface {
 	Auth(smtp.Auth) error
 	Mail(string) error
 	Rcpt(string) error
-	Data() (io.WriteCloser, error)
+	Data() (io.WriteCloser, int, string, error)
 	Quit() error
 	Close() error
 }
 
 type RecipientResponse struct {
-	address string
-	err     error
+	Address string
+	Resp    string
+	Error   error
 }

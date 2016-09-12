@@ -3,9 +3,9 @@ package gomail
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/ishail/smtp/smtp"
 	"io"
 	"net"
+	"net/smtp"
 	"strings"
 	"time"
 )
@@ -111,7 +111,7 @@ func (d *Dialer) Dial() (SendCloser, error) {
 		}
 	}
 
-	return &smtpSender{c, d}, nil
+	return smtpSender{*c, d}, nil
 }
 
 func (d *Dialer) tlsConfig() *tls.Config {
@@ -155,18 +155,18 @@ func (d *Dialer) DialAndCampaignSend(fm string, to []string, m *Message) ([]Reci
 }
 
 type smtpSender struct {
-	smtpClient
+	smtp.Client
 	d *Dialer
 }
 
-func (c *smtpSender) Send(from string, to []string, msg io.WriterTo) (string, error) {
+func (c smtpSender) Send(from string, to []string, msg io.WriterTo) (string, error) {
 	if err := c.Mail(from); err != nil {
 		if err == io.EOF {
 			// This is probably due to a timeout, so reconnect and try again.
 			sc, derr := c.d.Dial()
 			if derr == nil {
 				if s, ok := sc.(*smtpSender); ok {
-					*c = *s
+					c = *s
 					return c.Send(from, to, msg)
 				}
 			}
@@ -180,7 +180,7 @@ func (c *smtpSender) Send(from string, to []string, msg io.WriterTo) (string, er
 		}
 	}
 
-	w, code, resp, err := c.Data()
+	w, err := c.Data()
 	if err != nil {
 		return "", err
 	}
@@ -190,10 +190,12 @@ func (c *smtpSender) Send(from string, to []string, msg io.WriterTo) (string, er
 		return "", err
 	}
 
-	return fmt.Sprintf("%d %s", code, resp), w.Close()
+	_, resp, err := c.Text.ReadResponse(250)
+
+	return resp, w.Close()
 }
 
-func (c *smtpSender) Close() error {
+func (c smtpSender) Close() error {
 	return c.Quit()
 }
 
@@ -201,22 +203,22 @@ func (c *smtpSender) Close() error {
 var (
 	netDialTimeout = net.DialTimeout
 	tlsClient      = tls.Client
-	smtpNewClient  = func(conn net.Conn, host string) (smtpClient, error) {
+	smtpNewClient  = func(conn net.Conn, host string) (*smtp.Client, error) {
 		return smtp.NewClient(conn, host)
 	}
 )
 
-type smtpClient interface {
-	Hello(string) error
-	Extension(string) (bool, string)
-	StartTLS(*tls.Config) error
-	Auth(smtp.Auth) error
-	Mail(string) error
-	Rcpt(string) error
-	Data() (io.WriteCloser, int, string, error)
-	Quit() error
-	Close() error
-}
+// type smtpClient interface {
+// 	Hello(string) error
+// 	Extension(string) (bool, string)
+// 	StartTLS(*tls.Config) error
+// 	Auth(smtp.Auth) error
+// 	Mail(string) error
+// 	Rcpt(string) error
+// 	Data() (io.WriteCloser, error)
+// 	Quit() error
+// 	Close() error
+// }
 
 type RecipientResponse struct {
 	Address string

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/ishail/smtp/smtp"
+	"net/smtp"
 )
 
 // loginAuth is an smtp.Auth that implements the LOGIN authentication mechanism.

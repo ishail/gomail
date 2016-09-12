@@ -171,23 +171,23 @@ func (c smtpSender) Send(from string, to []string, msg io.WriterTo) (string, err
 				}
 			}
 		}
-		return "", err
+		return "", fmt.Errorf("error in connecting....Error: %v", err)
 	}
 
 	for _, addr := range to {
 		if err := c.Rcpt(addr); err != nil {
-			return "", err
+			return "", fmt.Errorf("error in sending to....Error: %v", err)
 		}
 	}
 
 	w, err := c.Data()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error in sending data....Error: %v", err)
 	}
 
 	if _, err = msg.WriteTo(w); err != nil {
 		w.Close()
-		return "", err
+		return "", fmt.Errorf("error in sending writer....Error: %v", err)
 	}
 
 	_, resp, err := c.Text.ReadResponse(250)

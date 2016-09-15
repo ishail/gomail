@@ -111,7 +111,7 @@ func (d *Dialer) Dial() (SendCloser, error) {
 		}
 	}
 
-	return smtpSender{*c, d}, nil
+	return &smtpSender{c, d}, nil
 }
 
 func (d *Dialer) tlsConfig() *tls.Config {
@@ -127,10 +127,10 @@ func addr(host string, port int) string {
 
 // DialAndSend opens a connection to the SMTP server, sends the given emails and
 // closes the connection.
-func (d *Dialer) DialAndSend(m ...*Message) (string, error) {
+func (d *Dialer) DialAndSend(m ...*Message) error {
 	s, err := d.Dial()
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer s.Close()
 
@@ -148,54 +148,52 @@ func (d *Dialer) DialAndCampaignSend(fm string, to []string, m *Message) ([]Reci
 	recipientResponse := make([]RecipientResponse, len(to))
 	for index, addr := range to {
 		m.SetHeader("To", addr)
-		resp, err := s.Send(fm, []string{addr}, m)
-		recipientResponse[index] = RecipientResponse{addr, resp, err}
+		err = s.Send(fm, []string{addr}, m)
+		recipientResponse[index] = RecipientResponse{addr, err}
 	}
 	return recipientResponse, nil
 }
 
 type smtpSender struct {
-	smtp.Client
+	smtpClient
 	d *Dialer
 }
 
-func (c smtpSender) Send(from string, to []string, msg io.WriterTo) (string, error) {
+func (c *smtpSender) Send(from string, to []string, msg io.WriterTo) error {
 	if err := c.Mail(from); err != nil {
 		if err == io.EOF {
 			// This is probably due to a timeout, so reconnect and try again.
 			sc, derr := c.d.Dial()
 			if derr == nil {
 				if s, ok := sc.(*smtpSender); ok {
-					c = *s
+					*c = *s
 					return c.Send(from, to, msg)
 				}
 			}
 		}
-		return "", fmt.Errorf("error in connecting....Error: %v", err)
+		return err
 	}
 
 	for _, addr := range to {
 		if err := c.Rcpt(addr); err != nil {
-			return "", fmt.Errorf("error in sending to....Error: %v", err)
+			return err
 		}
 	}
 
 	w, err := c.Data()
 	if err != nil {
-		return "", fmt.Errorf("error in sending data....Error: %v", err)
+		return err
 	}
 
 	if _, err = msg.WriteTo(w); err != nil {
 		w.Close()
-		return "", fmt.Errorf("error in sending writer....Error: %v", err)
+		return err
 	}
 
-	_, resp, err := c.Text.ReadResponse(250)
-
-	return resp, w.Close()
+	return w.Close()
 }
 
-func (c smtpSender) Close() error {
+func (c *smtpSender) Close() error {
 	return c.Quit()
 }
 
@@ -203,25 +201,24 @@ func (c smtpSender) Close() error {
 var (
 	netDialTimeout = net.DialTimeout
 	tlsClient      = tls.Client
-	smtpNewClient  = func(conn net.Conn, host string) (*smtp.Client, error) {
+	smtpNewClient  = func(conn net.Conn, host string) (smtpClient, error) {
 		return smtp.NewClient(conn, host)
 	}
 )
 
-// type smtpClient interface {
-// 	Hello(string) error
-// 	Extension(string) (bool, string)
-// 	StartTLS(*tls.Config) error
-// 	Auth(smtp.Auth) error
-// 	Mail(string) error
-// 	Rcpt(string) error
-// 	Data() (io.WriteCloser, error)
-// 	Quit() error
-// 	Close() error
-// }
+type smtpClient interface {
+	Hello(string) error
+	Extension(string) (bool, string)
+	StartTLS(*tls.Config) error
+	Auth(smtp.Auth) error
+	Mail(string) error
+	Rcpt(string) error
+	Data() (io.WriteCloser, error)
+	Quit() error
+	Close() error
+}
 
 type RecipientResponse struct {
-	Address string
-	Resp    string
-	Error   error
+	address string
+	err     error
 }

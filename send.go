@@ -11,7 +11,7 @@ import (
 //
 // Send sends an email to the given addresses.
 type Sender interface {
-	Send(from string, to []string, msg io.WriterTo) (string, error)
+	Send(from string, to []string, msg io.WriterTo) error
 }
 
 // SendCloser is the interface that groups the Send and Close methods.
@@ -33,30 +33,32 @@ func (f SendFunc) Send(from string, to []string, msg io.WriterTo) error {
 }
 
 // Send sends emails using the given Sender.
-func Send(s Sender, msg ...*Message) (string, error) {
-	var resp string
-	var err error
+func Send(s Sender, msg ...*Message) error {
 	for i, m := range msg {
-		if resp, err = send(s, m); err != nil {
-			return "", fmt.Errorf("gomail: could not send email %d: %v", i+1, err)
+		if err := send(s, m); err != nil {
+			return fmt.Errorf("gomail: could not send email %d: %v", i+1, err)
 		}
 	}
 
-	return resp, nil
+	return nil
 }
 
-func send(s Sender, m *Message) (string, error) {
+func send(s Sender, m *Message) error {
 	from, err := m.getFrom()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	to, err := m.getRecipients()
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return s.Send(from, to, m)
+	if err := s.Send(from, to, m); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (m *Message) getFrom() (string, error) {

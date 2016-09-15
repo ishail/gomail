@@ -219,6 +219,6 @@ type smtpClient interface {
 }
 
 type RecipientResponse struct {
-	address string
-	err     error
+	Address string
+	Error   error
 }
